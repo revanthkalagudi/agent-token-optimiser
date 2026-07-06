@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agent-token-guard"
-version = "0.1.0"
+version = "0.2.0"
 description = "Reduce LLM agent session token waste through smart memory, indexing, and output compression"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -28,13 +28,22 @@ dependencies = [
     "gitpython>=3.1.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/revanthkalagudi/agent-token-optimiser"
+Repository = "https://github.com/revanthkalagudi/agent-token-optimiser"
+Issues = "https://github.com/revanthkalagudi/agent-token-optimiser/issues"
+
 [project.scripts]
 atg = "agent_token_guard.cli:app"
 
 [project.optional-dependencies]
 dev = [
+    "build>=1.2",
+    "pyright>=1.1.380",
     "pytest>=7.0",
     "pytest-cov>=4.0",
+    "ruff>=0.6.0",
+    "twine>=5.1.0",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -42,3 +51,10 @@ packages = ["src/agent_token_guard"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]

@@ -2,7 +2,13 @@
 
 import pytest
 from pathlib import Path
-from agent_token_guard.adapters import ClaudeAdapter, CodexAdapter
+from agent_token_guard.adapters import (
+    AgentsAdapter,
+    ClaudeAdapter,
+    CodexAdapter,
+    CopilotAdapter,
+    CursorAdapter,
+)
 
 
 @pytest.fixture
@@ -93,3 +99,42 @@ def test_codex_does_not_overwrite_if_configured(tmp_root):
     created = adapter.generate()
     assert (tmp_root / "AGENTS.md").read_text() == existing
     assert "skipped" in created[0]
+
+
+def test_copilot_creates_instructions(tmp_root):
+    adapter = CopilotAdapter(root=tmp_root)
+    created = adapter.generate()
+    assert (tmp_root / ".github" / "copilot-instructions.md").exists()
+    assert "copilot-instructions" in created[0]
+
+
+def test_cursor_creates_rule_file(tmp_root):
+    adapter = CursorAdapter(root=tmp_root)
+    created = adapter.generate()
+    assert (tmp_root / ".cursor" / "rules" / "agent-token-guard.mdc").exists()
+    assert created == [".cursor/rules/agent-token-guard.mdc"]
+
+
+def test_agents_creates_skill_file(tmp_root):
+    adapter = AgentsAdapter(root=tmp_root)
+    created = adapter.generate()
+    skill = tmp_root / ".agents" / "skills" / "token-guard" / "SKILL.md"
+    assert skill.exists()
+    assert "atg doctor" in skill.read_text()
+    assert created == [".agents/skills/token-guard/SKILL.md"]
+
+
+def test_claude_uninstall_removes_section_and_commands(tmp_root):
+    adapter = ClaudeAdapter(root=tmp_root)
+    adapter.generate()
+    removed = adapter.uninstall()
+    assert any("CLAUDE.md" in x for x in removed)
+    assert not (tmp_root / ".claude" / "commands" / "save.md").exists()
+
+
+def test_codex_uninstall_removes_section_and_skill(tmp_root):
+    adapter = CodexAdapter(root=tmp_root)
+    adapter.generate()
+    removed = adapter.uninstall()
+    assert any("AGENTS.md" in x for x in removed)
+    assert not (tmp_root / ".codex" / "skills" / "token-guard" / "SKILL.md").exists()

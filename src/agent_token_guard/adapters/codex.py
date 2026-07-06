@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from .common import remove_file, remove_managed_section, upsert_managed_section, write_file
+
 _AGENTS_MD = """\
 # Project Instructions
 
@@ -127,22 +129,33 @@ class CodexAdapter:
         created: list[str] = []
 
         agents_md = self.root / "AGENTS.md"
-        if agents_md.exists():
-            existing = agents_md.read_text()
-            if "agent-token-guard" not in existing:
-                agents_md.write_text(existing.rstrip() + "\n\n" + _AGENTS_MD)
-                created.append("AGENTS.md (appended)")
-            else:
-                created.append("AGENTS.md (already configured — skipped)")
-        else:
-            agents_md.write_text(_AGENTS_MD)
+        mode = upsert_managed_section(agents_md, _AGENTS_MD)
+        if mode == "created":
             created.append("AGENTS.md")
+        elif mode == "appended":
+            created.append("AGENTS.md (appended)")
+        elif mode == "updated":
+            created.append("AGENTS.md (updated)")
+        else:
+            created.append("AGENTS.md (already configured - skipped)")
 
         skill_dir = self.root / ".codex" / "skills" / "token-guard"
         skill_dir.mkdir(parents=True, exist_ok=True)
 
         skill_file = skill_dir / "SKILL.md"
-        skill_file.write_text(_SKILL_MD)
+        write_file(skill_file, _SKILL_MD)
         created.append(".codex/skills/token-guard/SKILL.md")
 
         return created
+
+    def uninstall(self) -> list[str]:
+        """Remove Codex integration files installed by this adapter."""
+        removed: list[str] = []
+        agents_md = self.root / "AGENTS.md"
+        if remove_managed_section(agents_md):
+            removed.append("AGENTS.md (section removed)")
+
+        skill_rel = ".codex/skills/token-guard/SKILL.md"
+        if remove_file(self.root / skill_rel):
+            removed.append(skill_rel)
+        return removed
