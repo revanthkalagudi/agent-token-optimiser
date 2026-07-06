@@ -85,7 +85,7 @@ class RepoIndexer:
                 cwd=self.root,
             )
             if result.returncode == 0:
-                return [f for f in result.stdout.splitlines() if f.strip()]
+                return [Path(f).as_posix() for f in result.stdout.splitlines() if f.strip()]
         except Exception:
             pass
         return []
@@ -122,7 +122,7 @@ class RepoIndexer:
             elif ext in _DOC_EXTENSIONS:
                 category = "doc"
 
-            file_map[str(rel)] = {
+            file_map[rel.as_posix()] = {
                 "category": category,
                 "ext": ext,
                 "size_bytes": size,

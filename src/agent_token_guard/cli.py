@@ -16,7 +16,8 @@ from .memory import MemoryManager
 from .indexer import RepoIndexer
 from .compressor import OutputCompressor
 from .metrics import MetricsEngine
-from .adapters import ClaudeAdapter, CodexAdapter
+from .doctor import Doctor
+from .adapters import AgentsAdapter, ClaudeAdapter, CodexAdapter, CopilotAdapter, CursorAdapter
 
 app = typer.Typer(
     name="atg",
@@ -27,7 +28,29 @@ app = typer.Typer(
 
 console = Console()
 
-_VALID_AGENTS = {"claude", "codex", "all"}
+_AGENT_ADAPTERS = {
+    "claude": ClaudeAdapter,
+    "codex": CodexAdapter,
+    "copilot": CopilotAdapter,
+    "cursor": CursorAdapter,
+    "agents": AgentsAdapter,
+}
+_VALID_AGENTS = set(_AGENT_ADAPTERS) | {"all"}
+
+
+def _parse_agent_selection(raw: str) -> list[str]:
+    requested = {a.strip().lower() for a in raw.split(",") if a.strip()}
+    if not requested:
+        return []
+    unknown = requested - _VALID_AGENTS
+    if unknown:
+        valid = ", ".join(sorted(_VALID_AGENTS))
+        console.print(f"[red]Unknown agents: {', '.join(sorted(unknown))}. Valid: {valid}.[/red]")
+        raise typer.Exit(1)
+
+    if "all" in requested:
+        return sorted(_AGENT_ADAPTERS)
+    return sorted(requested)
 
 
 # ---------------------------------------------------------------------------
@@ -42,7 +65,7 @@ def init(
         typer.Option(
             "--agents",
             "-a",
-            help="Comma-separated adapters to enable: claude, codex, all",
+            help="Comma-separated adapters to enable: claude, codex, copilot, cursor, agents, all",
         ),
     ] = "all",
     root: Annotated[
@@ -52,14 +75,10 @@ def init(
 ) -> None:
     """Initialise AgentTokenGuard in a repo. Creates memory dirs, policies, and agent files."""
     root_path = root or Path.cwd()
-    requested = {a.strip().lower() for a in agents.split(",")}
-    unknown = requested - _VALID_AGENTS
-    if unknown:
-        console.print(f"[red]Unknown agents: {', '.join(unknown)}. Valid: claude, codex, all.[/red]")
+    selected_agents = _parse_agent_selection(agents)
+    if not selected_agents:
+        console.print("[red]No adapters selected. Pass --agents with at least one platform.[/red]")
         raise typer.Exit(1)
-
-    use_claude = "claude" in requested or "all" in requested
-    use_codex = "codex" in requested or "all" in requested
 
     created: list[str] = []
 
@@ -75,12 +94,8 @@ def init(
     for subdir in ("memory", "index", "metrics"):
         (root_path / ".agent-token-guard" / subdir).mkdir(parents=True, exist_ok=True)
 
-    if use_claude:
-        adapter = ClaudeAdapter(root=root_path)
-        created += adapter.generate()
-
-    if use_codex:
-        adapter = CodexAdapter(root=root_path)
+    for name in selected_agents:
+        adapter = _AGENT_ADAPTERS[name](root=root_path)
         created += adapter.generate()
 
     console.print(Panel.fit("[bold green]AgentTokenGuard initialised[/bold green]"))
@@ -94,6 +109,51 @@ def init(
         "  3. Run [bold]atg save[/bold] at the end of each session\n"
         "  4. Run [bold]atg resume[/bold] at the start of the next session"
     )
+
+
+@app.command()
+def uninstall(
+    agents: Annotated[
+        str,
+        typer.Option(
+            "--agents",
+            "-a",
+            help="Comma-separated adapters to remove: claude, codex, copilot, cursor, agents, all",
+        ),
+    ] = "all",
+    purge_data: Annotated[
+        bool,
+        typer.Option("--purge-data", help="Also remove the .agent-token-guard data directory"),
+    ] = False,
+    root: Annotated[
+        Optional[Path],
+        typer.Option("--root", help="Repo root (defaults to current directory)"),
+    ] = None,
+) -> None:
+    """Uninstall adapter files and optionally remove AgentTokenGuard data."""
+    import shutil
+
+    root_path = root or Path.cwd()
+    selected_agents = _parse_agent_selection(agents)
+    removed: list[str] = []
+
+    for name in selected_agents:
+        adapter = _AGENT_ADAPTERS[name](root=root_path)
+        if hasattr(adapter, "uninstall"):
+            removed += adapter.uninstall()
+
+    if purge_data:
+        guard_dir = root_path / ".agent-token-guard"
+        if guard_dir.exists():
+            shutil.rmtree(guard_dir)
+            removed.append(".agent-token-guard/ (purged)")
+
+    console.print(Panel.fit("[bold green]AgentTokenGuard uninstall complete[/bold green]"))
+    if not removed:
+        console.print("[dim]No files removed.[/dim]")
+        return
+    for path in removed:
+        console.print(f"  [green]-[/green] {path}")
 
 
 # ---------------------------------------------------------------------------
@@ -365,6 +425,41 @@ def report(
                 f"  [dim]{ev['ts']}[/dim]  {ev['event']:<10}  "
                 f"saved [green]{saved:,}[/green] tokens"
             )
+
+
+@app.command()
+def doctor(
+    root: Annotated[
+        Optional[Path],
+        typer.Option("--root", help="Repo root"),
+    ] = None,
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Output doctor report as JSON"),
+    ] = False,
+) -> None:
+    """Run environment and dependency checks for release-readiness."""
+    root_path = root or Path.cwd()
+    report_data = Doctor(root=root_path).run()
+
+    if json_output:
+        import json
+
+        print(json.dumps(report_data, indent=2))
+        return
+
+    style = "green" if report_data["ok"] else "yellow"
+    console.print(Panel.fit(f"[bold {style}]ATG Doctor[/bold {style}]"))
+    for check in report_data["checks"]:
+        icon = "[green]PASS[/green]" if check["ok"] else "[red]FAIL[/red]"
+        console.print(f"{icon}  {check['name']}: {check['detail']}")
+        if check.get("fix"):
+            console.print(f"      [dim]fix: {check['fix']}[/dim]")
+
+    if report_data["ok"]:
+        console.print("\n[green]Environment looks ready to ship.[/green]")
+    else:
+        console.print("\n[yellow]Resolve failing checks before publishing.[/yellow]")
 
 
 # ---------------------------------------------------------------------------

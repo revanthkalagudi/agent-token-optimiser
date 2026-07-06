@@ -2,7 +2,7 @@
 
 **Reduce LLM agent session token waste by 30–70%** through smart session memory, repo indexing, output compression, and usage metrics.
 
-Works with **Claude Code** (CLAUDE.md + `/save`, `/resume` commands) and **Codex** (AGENTS.md + skill files).
+Works with **Claude Code**, **Codex**, **GitHub Copilot**, **Cursor**, and generic **Agent Skills** frameworks.
 
 ---
 
@@ -58,7 +58,7 @@ Requires Python 3.9+.
 ## Quick Start
 
 ```bash
-# 1. Initialise in your repo (creates CLAUDE.md, AGENTS.md, policy files)
+# 1. Initialise in your repo (creates assistant instructions + policy files)
 cd my-repo
 atg init --agents all
 
@@ -90,15 +90,28 @@ Paste the `atg resume` output at the top of your agent session. The agent now ha
 Creates all integration files for a repo.
 
 ```
-atg init [--agents claude,codex,all] [--root PATH]
+atg init [--agents claude,codex,copilot,cursor,agents,all] [--root PATH]
 ```
 
 Generates:
 - `CLAUDE.md` (or appends to existing)
 - `AGENTS.md` (or appends to existing)
+- `.github/copilot-instructions.md` (or appends to existing)
+- `.cursor/rules/agent-token-guard.mdc`
+- `.agents/skills/token-guard/SKILL.md`
 - `.claude/commands/` — `/save`, `/resume`, `/token-report`, `/compress-output`
 - `.codex/skills/token-guard/SKILL.md`
 - `.agent-token-guard/rules/` — output and read policies
+
+### `atg uninstall`
+
+Removes installed adapter files and optionally local ATG data.
+
+```
+atg uninstall [--agents claude,codex,copilot,cursor,agents,all] [--purge-data]
+```
+
+`--purge-data` deletes `.agent-token-guard/` after adapter cleanup.
 
 ---
 
@@ -183,6 +196,20 @@ Shows accumulated token savings.
 atg report [--json]
 ```
 
+### `atg doctor`
+
+Runs ship-readiness checks for environment and dependencies.
+
+```
+atg doctor [--json]
+```
+
+Checks:
+- Python version
+- Required Python modules
+- Git binary and git repo status
+- `.agent-token-guard/` write permissions
+
 Example output:
 
 ```
@@ -260,14 +287,16 @@ src/agent_token_guard/
 ├── metrics.py      ← MetricsEngine (usage.jsonl + reporting)
 └── adapters/
     ├── claude.py   ← CLAUDE.md + .claude/commands/
-    └── codex.py    ← AGENTS.md + .codex/skills/
+    ├── codex.py    ← AGENTS.md + .codex/skills/
+    ├── platforms.py← Copilot/Cursor/Agent-Skills adapters
+    └── common.py   ← managed section helpers for install/uninstall
 ```
 
 ---
 
 ## Roadmap
 
-**Phase 1 (current)** — Session memory, repo index, output compression, Claude + Codex adapters, metrics.
+**Phase 1 (current)** — Session memory, repo index, output compression, multi-platform adapters (Claude/Codex/Copilot/Cursor/Agent-Skills), doctor checks, metrics.
 
 **Phase 2** — Git hook integration (`post-commit` auto-save), CI log compression, semantic code index with tree-sitter, team policy templates.
 

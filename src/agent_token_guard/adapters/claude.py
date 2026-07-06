@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from .common import remove_file, remove_managed_section, upsert_managed_section, write_file
+
 _CLAUDE_MD = """\
 # Project Memory
 
@@ -158,17 +160,15 @@ class ClaudeAdapter:
         created: list[str] = []
 
         claude_md = self.root / "CLAUDE.md"
-        if claude_md.exists():
-            existing = claude_md.read_text()
-            if "agent-token-guard" not in existing:
-                # Append our block rather than overwriting
-                claude_md.write_text(existing.rstrip() + "\n\n" + _CLAUDE_MD)
-                created.append("CLAUDE.md (appended)")
-            else:
-                created.append("CLAUDE.md (already configured — skipped)")
-        else:
-            claude_md.write_text(_CLAUDE_MD)
+        mode = upsert_managed_section(claude_md, _CLAUDE_MD)
+        if mode == "created":
             created.append("CLAUDE.md")
+        elif mode == "appended":
+            created.append("CLAUDE.md (appended)")
+        elif mode == "updated":
+            created.append("CLAUDE.md (updated)")
+        else:
+            created.append("CLAUDE.md (already configured - skipped)")
 
         commands_dir = self.root / ".claude" / "commands"
         commands_dir.mkdir(parents=True, exist_ok=True)
@@ -180,7 +180,20 @@ class ClaudeAdapter:
             ("compress-output.md", _COMPRESS_COMMAND),
         ]:
             path = commands_dir / name
-            path.write_text(content)
+            write_file(path, content)
             created.append(f".claude/commands/{name}")
 
         return created
+
+    def uninstall(self) -> list[str]:
+        """Remove Claude integration files installed by this adapter."""
+        removed: list[str] = []
+        claude_md = self.root / "CLAUDE.md"
+        if remove_managed_section(claude_md):
+            removed.append("CLAUDE.md (section removed)")
+
+        for name in ("save.md", "resume.md", "token-report.md", "compress-output.md"):
+            rel = f".claude/commands/{name}"
+            if remove_file(self.root / rel):
+                removed.append(rel)
+        return removed
